@@ -2,16 +2,23 @@
 
 main()
 {
-long num = 600851475143;
+//long long num = 600851475143;
+//long long num = 8462696833;
+//long long num = 10086647;
+//long num = 6857;
+//long num = 1471;
+//int num = 839;
+int num = 71;
 
-int first_100_primes[100] = { 0 };
+//int first_100_primes[100] = { 0 };
 int i;
 
-for (i = ; i < 100; i++)
+for (i = 1; i < num; i++)
 {
-if ()
-first_100_primes[i] = (i + 1) / 
+	if ((num % i) == 0)
+		printf("%d\n", i);
 }
+
 
 
 /*
