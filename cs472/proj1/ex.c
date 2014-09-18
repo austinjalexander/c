@@ -4,7 +4,7 @@
 int main(int argc, char *argv[])
 {
 
-  int number = 0;
+  int number = 100;
 
   puts("Hellow world.");
 
