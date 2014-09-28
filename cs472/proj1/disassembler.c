@@ -1,3 +1,8 @@
+// File: disassembler.c
+// Student: Austin J. Alexander
+// Assignment: Project 1
+// Course: MET CS472 (FALL 2014)
+
 #include <stdio.h>
 #include <string.h>
 
@@ -171,15 +176,15 @@ int main()
     else {
                         /////// I FORMAT ///////
 
-      /******* OFFSET [16 bits] *******/
+      /******* CONSTANT/OFFSET [16 bits] *******/
 
-      // properly positioned mask for offset
+      // properly positioned mask for constant/offset
       // 0000 0000 0000 0000 |1111 1111 1111 1111|
-      unsigned int offset_mask = 0x0000FFFF; 
+      unsigned int constant_offset_mask = 0x0000FFFF; 
       // logical AND (no need to shift, but do need a short for negative values)
-      short offset = (instructions[instr_index] & offset_mask);
-      // display function value in hex
-      printf("Offset hex value: 0x%x\n", offset);
+      short constant_offset = (instructions[instr_index] & constant_offset_mask);
+      // display constant/offset value in hex
+      printf("Constant/Offset hex value: 0x%x\n", constant_offset);
 
 
       /******* OPERATION NAME (OPCODE) [6 bits] *******/
@@ -212,16 +217,23 @@ int main()
       /******* FINAL OUTPUT *******/
 
       printf("\n---> Assembly instruction: ");
-      // if a branch
+      // if a branch:
+      // program counter (PC) / instruction pointer (IP) would be pointed 
+      // at next instruction
+      int instruction_pointer = (memory_address + 4);
+      // branch_to instruction is based on IP, 
+      // with the constant/offset shifted right by two bits,
+      // so shift left the constant/offeset to recover actual byte offset
+      int branch_to = (instruction_pointer + (constant_offset << 2));
       if (opcode == 0x00000004 || opcode == 0x00000005) {
         printf("0x%x: %s $%d,$%d (branch to: 0x%x) <---\n\n", 
                 memory_address, operation_name, rs, 
-                rt, (memory_address + offset));        
+                rt, branch_to);        
       }
       else {
         printf("0x%x: %s $%d,%d($%d) <---\n\n", 
                 memory_address, operation_name, rt, 
-                offset, rs);        
+                constant_offset, rs);        
       }
 
     } // end: else (i.e., opcode != 0)
