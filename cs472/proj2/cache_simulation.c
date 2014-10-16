@@ -7,8 +7,9 @@
 #include <stdlib.h>
 #include <assert.h>
 
-// SIMULATION OF A DIRECT-MAPPED, WRITE-BACK CACHE //
+/////// ******* SIMULATION OF A DIRECT-MAPPED, WRITE-BACK CACHE ******* ///////
 
+// GLOBAL VARIABLES//
 const short DATA_BLOCK_SIZE = 16; // size in bytes
 
 struct CacheSlot {
@@ -31,15 +32,15 @@ struct CacheSlot *createCacheSlot(short slot_index, short valid_flag, short tag,
   *cache_slot->data = data;
 
   return cache_slot;
-} //struct CacheSlot *cache_slot = createCacheSlot(0 ,0, 0, 0);
+}
 
 void destroyCacheSlot(struct CacheSlot *cache_slot) {
   assert(cache_slot != NULL);
 
   free(cache_slot);
-} //destroyCacheSlot(cache_slot);
+}
 
-void printCacheSlot(struct CacheSlot *cache_slot) {
+void displayCacheSlot(struct CacheSlot *cache_slot) {
   printf("  0x%X   0x%X   0x%X     ", 
            cache_slot->slot_index, cache_slot->valid_flag, 
            cache_slot->tag);
@@ -48,16 +49,16 @@ void printCacheSlot(struct CacheSlot *cache_slot) {
   }
   printf("\n");
   
-} //printCacheSlot(cache_slot);
+}
 
-void printCache(short CACHE_SIZE, struct CacheSlot *cache) {
+void displayCache(short CACHE_SIZE, struct CacheSlot *cache) {
   printf("\n SLOT  VALID  TAG     DATA\n");
   for (int i = 0; i < CACHE_SIZE; i++) {
-    printCacheSlot(&cache[i]);
+    displayCacheSlot(&cache[i]);
   } 
-} //printCache(short CACHE_SIZE, struct CacheSlot *cache)
+}
 
-void printMainMemory(short MEM_SIZE, short *main_memory) {
+void displayMainMemory(short MEM_SIZE, short *main_memory) {
   for (int i = 0; i < MEM_SIZE; i++) {
     printf("[0x%02X] = 0x%02X | ", i, main_memory[i]);
     if (main_memory[i] % 5 == 0) {
@@ -68,9 +69,9 @@ void printMainMemory(short MEM_SIZE, short *main_memory) {
     }
   }
 
-} //printMainMemory(short MEM_SIZE, short *main_memory)
+}
 
-void checkCache(short address_request, struct CacheSlot *cache, short *main_memory) {
+void read(short address_request, struct CacheSlot *cache, short *main_memory) {
 
   short offset_mask = 0x000F;
   short slot_index_mask = 0x00F0;
@@ -106,7 +107,7 @@ void checkCache(short address_request, struct CacheSlot *cache, short *main_memo
   } 
 }
 
-void updateCache(short address_request, short data_to_write, struct CacheSlot *cache) {
+void write(short address_request, short data_to_write, struct CacheSlot *cache) {
 
   short offset_mask = 0x000F;
   short slot_index_mask = 0x00F0;
@@ -123,7 +124,7 @@ int main()
   /////// ******* CACHE ******* ///////
 
   const short CACHE_SIZE = 16; // number of "slots"/"lines"
-  // if 16 (2^4), then 4 bits needed for cache index
+                               // if 16 (2^4), then 4 bits needed for cache index
 
   // create cache (an array of CacheSlots)
   struct CacheSlot cache[CACHE_SIZE];
@@ -134,7 +135,8 @@ int main()
 
   // display initial cache values
   printf("\nINITIAL CACHE VALUES\n");
-  printCache(CACHE_SIZE, cache);
+  displayCache(CACHE_SIZE, cache);
+
 
   /////// ******* MAIN MEMORY ******* ///////
 
@@ -158,71 +160,84 @@ int main()
   }
 
   // display initial memory values
-  //printMainMemory(MEM_SIZE, main_memory);
+  displayMainMemory(MEM_SIZE, main_memory);
+
+
+  /////// ******* OPERATIONS ******* /////// 
 
   short address_request = 0x5;
-  checkCache(address_request, cache, main_memory);
-  
+  read(address_request, cache, main_memory);
+
   address_request = 0x6;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x7;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x14c;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x14d;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x14e;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x14f;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x150;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x151;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x3A6;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
   address_request = 0x4C3;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
-  printCache(CACHE_SIZE, cache);
+  displayCache(CACHE_SIZE, cache);
 
   address_request = 0x14C;
   short data_to_write = 0x99;
-  checkCache(address_request, cache, main_memory);
-  updateCache(address_request, data_to_write, cache);
+  read(address_request, cache, main_memory);
+  write(address_request, data_to_write, cache); // slot 0x4, tag 0x1 -> dirty bit = 1
+                                                // data is now not: 0x4C, make write message
 
   address_request = 0x63B;
   data_to_write = 0x7;
-  checkCache(address_request, cache, main_memory);
-  updateCache(address_request, data_to_write, cache);
+  read(address_request, cache, main_memory);
+  write(address_request, data_to_write, cache); // slot 0x3, tag 0x6 -> dirty bit = 1
+                                                // make write message
 
   address_request = 0x582;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
-  printCache(CACHE_SIZE, cache);
+  displayCache(CACHE_SIZE, cache);
 
-  address_request = 0x14B;
-  checkCache(address_request, cache, main_memory);
+  address_request = 0x348;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  read(address_request, cache, main_memory);
+
+  address_request = 0x3F;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  read(address_request, cache, main_memory);
+
+  displayCache(CACHE_SIZE, cache);
+
+  address_request = 0x14B;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  read(address_request, cache, main_memory);
 
   address_request = 0x14C;
-  checkCache(address_request, cache, main_memory);
+  read(address_request, cache, main_memory);
 
-  address_request = 0x63F;
-  checkCache(address_request, cache, main_memory);
+  address_request = 0x63F;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  read(address_request, cache, main_memory);
 
-  address_request = 0x83;
-  checkCache(address_request, cache, main_memory);
+  address_request = 0x83;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  read(address_request, cache, main_memory);
 
-  printCache(CACHE_SIZE, cache);
+  displayCache(CACHE_SIZE, cache);
  
 
   return 0;
