@@ -13,21 +13,23 @@
 const short DATA_BLOCK_SIZE = 16; // size in bytes
 
 struct CacheSlot {
-  short slot_index;
   short valid_flag;
+  short dirty_bit;
   short tag;
+  short slot_num;
   short offset;
   short data[DATA_BLOCK_SIZE];
 };
 
-struct CacheSlot *createCacheSlot(short slot_index, short valid_flag, short tag, 
-                                  short offset, short data) {
+struct CacheSlot *createCacheSlot(short valid_flag, short dirty_bit, short tag, 
+                                  short slot_num, short offset, short data) {
   struct CacheSlot *cache_slot = malloc(sizeof(struct CacheSlot));
   assert(cache_slot != NULL);
 
-  cache_slot->slot_index = slot_index;
   cache_slot->valid_flag = valid_flag;
+  cache_slot->dirty_bit = dirty_bit;
   cache_slot->tag = tag;
+  cache_slot->slot_num = slot_num;
   cache_slot->offset = offset;
   *cache_slot->data = data;
 
@@ -41,9 +43,12 @@ void destroyCacheSlot(struct CacheSlot *cache_slot) {
 }
 
 void displayCacheSlot(struct CacheSlot *cache_slot) {
-  printf("  0x%X   0x%X   0x%X     ", 
-           cache_slot->slot_index, cache_slot->valid_flag, 
-           cache_slot->tag);
+  printf("  0x%X    0x%X   0x%X   0x%X     ", 
+           cache_slot->valid_flag, 
+           cache_slot->dirty_bit, 
+           cache_slot->tag,
+           cache_slot->slot_num); 
+
   for (int i = 0; i < DATA_BLOCK_SIZE; i++) {
     printf("0x%02X ", cache_slot->data[i]);
   }
@@ -52,7 +57,8 @@ void displayCacheSlot(struct CacheSlot *cache_slot) {
 }
 
 void displayCache(short CACHE_SIZE, struct CacheSlot *cache) {
-  printf("\n SLOT  VALID  TAG     DATA\n");
+  printf("\nDISPLAY CACHE:");
+  printf("\n VALID  DIRTY  TAG  SLOT#    BLOCK DATA\n");
   for (int i = 0; i < CACHE_SIZE; i++) {
     displayCacheSlot(&cache[i]);
   } 
@@ -73,36 +79,69 @@ void displayMainMemory(short MEM_SIZE, short *main_memory) {
 
 void read(short address_request, struct CacheSlot *cache, short *main_memory) {
 
-  short offset_mask = 0x000F;
-  short slot_index_mask = 0x00F0;
+  short slot_num_mask = 0x00F0;
   short tag_mask = 0x0F00;
+  short offset_mask = 0x000F;
 
-  short offset = (address_request & offset_mask);
-  short slot_index = (address_request & slot_index_mask) >> 4;
+  short slot_num = (address_request & slot_num_mask) >> 4;
   short tag = (address_request & tag_mask) >> 8;
+  short offset = (address_request & offset_mask);
 
-  printf("\n|  TAG  |  SLOT#  | OFFSET |\n");
-  printf("   0x%X      0x%X       0x%X\n", tag, slot_index, offset);
+  printf("\nCACHE REQUEST:\n");
+  printf("|  TAG  |  SLOT#  | OFFSET |\n");
+  printf("   0x%X      0x%X       0x%X\n", tag, slot_num, offset);
 
   // check valid flag
-  if (cache[slot_index].valid_flag == 0x0) {
+  if (cache[slot_num].valid_flag == 0x0) {
     printf("\nCACHE MISS!\n");
     // fetch entire block from memory at tag location;
     // insert into cache
     for (int i = 0; i < DATA_BLOCK_SIZE; i++) {
-      cache[slot_index].data[i] = main_memory[i + (tag << 8) + (slot_index << 4)];
+      cache[slot_num].data[i] = main_memory[i + (tag << 8) + (slot_num << 4)];
     }
     // set tag
-    cache[slot_index].tag = tag;
+    cache[slot_num].tag = tag;
     // set valid flag to 1
-    cache[slot_index].valid_flag = 0x1;
+    cache[slot_num].valid_flag = 0x1;
   }
-  else if (cache[slot_index].valid_flag == 0x1) {
+  // if valid AND NOT dirty but wrong tag for slot_num
+  else if (cache[slot_num].valid_flag == 0x1 && cache[slot_num].dirty_bit == 0x0 
+           && cache[slot_num].tag != tag) {
+    printf("\nCACHE CONFLICT MISS!\n");
+    // fetch entire block from memory at tag location;
+    // insert into cache
+    for (int i = 0; i < DATA_BLOCK_SIZE; i++) {
+      cache[slot_num].data[i] = main_memory[i + (tag << 8) + (slot_num << 4)];
+    }
+    // set tag
+    cache[slot_num].tag = tag;
+  }
+  // if valid AND dirty but wrong tag for slot_num
+  else if (cache[slot_num].valid_flag == 0x1 && cache[slot_num].dirty_bit == 0x1 
+           && cache[slot_num].tag != tag) {
+    printf("\nCACHE CONFLICT MISS!\n");
+    printf("SENDING BLOCK DATA BACK TO MAIN MEMORY\n"); 
+    // write entire block back to memory;
+    for (int i = 0; i < DATA_BLOCK_SIZE; i++) {
+      main_memory[i + (cache[slot_num].tag << 8) + (cache[slot_num].slot_num << 4)] 
+        = cache[slot_num].data[i];
+    }
+    // fetch entire block from memory at tag location;
+    // insert into cache
+    for (int i = 0; i < DATA_BLOCK_SIZE; i++) {
+      cache[slot_num].data[i] = main_memory[i + (tag << 8) + (slot_num << 4)];
+    }
+    // set tag
+    cache[slot_num].tag = tag;
+    // reset dirty_bit
+    cache[slot_num].dirty_bit = 0x0;
+  }
+  else if (cache[slot_num].valid_flag == 0x1) {
     // compare tag //
-    if (cache[slot_index].tag == tag) {
+    if (cache[slot_num].tag == tag) {
       printf("\nCACHE HIT!\n");
       // get data at offset (mimic return to processor)
-      printf("DATA: 0x%02X\n\n", cache[slot_index].data[offset]);
+      printf("DATA: 0x%02X\n", cache[slot_num].data[offset]);
     }
   } 
 }
@@ -110,16 +149,20 @@ void read(short address_request, struct CacheSlot *cache, short *main_memory) {
 void write(short address_request, short data_to_write, struct CacheSlot *cache) {
 
   short offset_mask = 0x000F;
-  short slot_index_mask = 0x00F0;
+  short slot_num_mask = 0x00F0;
 
   short offset = (address_request & offset_mask);
-  short slot_index = (address_request & slot_index_mask) >> 4;
+  short slot_num = (address_request & slot_num_mask) >> 4;
 
-  cache[slot_index].data[offset] = data_to_write;
+  printf("WRITING NEW DATA: 0x%02X\n", data_to_write);  
+
+  cache[slot_num].data[offset] = data_to_write;
+  cache[slot_num].dirty_bit = 0x1;
 }
 
 int main()
 {
+  printf("\n\t\t\t<<<<<<< BEGIN CACHE SIMULATION >>>>>>>\n");
 
   /////// ******* CACHE ******* ///////
 
@@ -129,12 +172,11 @@ int main()
   // create cache (an array of CacheSlots)
   struct CacheSlot cache[CACHE_SIZE];
   for (int i = 0; i < CACHE_SIZE; i++) {
-    struct CacheSlot *cache_slot = createCacheSlot(i, 0, 0, 0, 0);
+    struct CacheSlot *cache_slot = createCacheSlot(0, 0, 0, i, 0, 0);
     cache[i] = *cache_slot;
   }
 
   // display initial cache values
-  printf("\nINITIAL CACHE VALUES\n");
   displayCache(CACHE_SIZE, cache);
 
 
@@ -160,7 +202,7 @@ int main()
   }
 
   // display initial memory values
-  displayMainMemory(MEM_SIZE, main_memory);
+  //displayMainMemory(MEM_SIZE, main_memory);
 
 
   /////// ******* OPERATIONS ******* /////// 
@@ -203,42 +245,44 @@ int main()
   address_request = 0x14C;
   short data_to_write = 0x99;
   read(address_request, cache, main_memory);
-  write(address_request, data_to_write, cache); // slot 0x4, tag 0x1 -> dirty bit = 1
-                                                // data is now not: 0x4C, make write message
+  write(address_request, data_to_write, cache);
 
   address_request = 0x63B;
   data_to_write = 0x7;
   read(address_request, cache, main_memory);
-  write(address_request, data_to_write, cache); // slot 0x3, tag 0x6 -> dirty bit = 1
-                                                // make write message
+  write(address_request, data_to_write, cache);
 
   address_request = 0x582;
   read(address_request, cache, main_memory);
 
   displayCache(CACHE_SIZE, cache);
 
-  address_request = 0x348;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  address_request = 0x348;   
   read(address_request, cache, main_memory);
 
-  address_request = 0x3F;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  address_request = 0x3F; 
   read(address_request, cache, main_memory);
 
   displayCache(CACHE_SIZE, cache);
 
-  address_request = 0x14B;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  address_request = 0x14B;
   read(address_request, cache, main_memory);
 
   address_request = 0x14C;
   read(address_request, cache, main_memory);
 
-  address_request = 0x63F;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  address_request = 0x63F;
   read(address_request, cache, main_memory);
 
-  address_request = 0x83;   // need to indicate cache conflict miss if valid bit 1 (right now, no message), write entire old cache block to main memory, bring in entire new block from main memory, update tag, and reset dirty bit = 0 if necessary!!!!! none of this is happening right now!
+  address_request = 0x83;
   read(address_request, cache, main_memory);
 
   displayCache(CACHE_SIZE, cache);
  
+  // display memory values
+  //displayMainMemory(MEM_SIZE, main_memory);
+
+  printf("\n\t\t\t<<<<<<< END CACHE SIMULATION >>>>>>>\n\n");
 
   return 0;
 }
