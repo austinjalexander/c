@@ -11,7 +11,11 @@
 
 // GLOBAL VARIABLES//
 const short DATA_BLOCK_SIZE = 16; // size in bytes
+const short CACHE_SIZE = 16; // number of "slots"/"lines"
+                             // if 16 (2^4), then 4 bits needed for cache index
+const short MEM_SIZE = 2048;
 
+// STRUCTURES
 struct CacheSlot {
   short valid_flag;
   short dirty_bit;
@@ -36,6 +40,7 @@ struct CacheSlot *createCacheSlot(short valid_flag, short dirty_bit, short tag,
   return cache_slot;
 }
 
+// FUNCTIONS
 void destroyCacheSlot(struct CacheSlot *cache_slot) {
   assert(cache_slot != NULL);
 
@@ -56,7 +61,7 @@ void displayCacheSlot(struct CacheSlot *cache_slot) {
   
 }
 
-void displayCache(short CACHE_SIZE, struct CacheSlot *cache) {
+void displayCache(struct CacheSlot *cache) {
   printf("\nDISPLAY CACHE:");
   printf("\n VALID  DIRTY  TAG  SLOT#    BLOCK DATA\n");
   for (int i = 0; i < CACHE_SIZE; i++) {
@@ -64,7 +69,8 @@ void displayCache(short CACHE_SIZE, struct CacheSlot *cache) {
   } 
 }
 
-void displayMainMemory(short MEM_SIZE, short *main_memory) {
+void displayMainMemory(short *main_memory) {
+  printf("\nDISPLAY MAIN MEMORY:\n");
   for (int i = 0; i < MEM_SIZE; i++) {
     printf("[0x%02X] = 0x%02X | ", i, main_memory[i]);
     if (main_memory[i] % 5 == 0) {
@@ -160,14 +166,36 @@ void write(short address_request, short data_to_write, struct CacheSlot *cache) 
   cache[slot_num].dirty_bit = 0x1;
 }
 
+void operation(char operation_type, short address_request, 
+               struct CacheSlot *cache, short *main_memory,
+               short data_to_write) {
+
+  switch(operation_type) {
+    case 'R':
+    case 'r':
+      read(address_request, cache, main_memory);
+      break;
+    case 'W':
+    case 'w':
+      read(address_request, cache, main_memory);
+      write(address_request, data_to_write, cache);
+      break;
+    case 'D':
+    case 'd':
+      displayCache(cache);
+      break;
+    default:
+      printf("\nCOMMAND NOT RECOGNIZED\n");
+      break;
+  }
+  
+}
+
 int main()
 {
   printf("\n\t\t\t<<<<<<< BEGIN CACHE SIMULATION >>>>>>>\n");
 
   /////// ******* CACHE ******* ///////
-
-  const short CACHE_SIZE = 16; // number of "slots"/"lines"
-                               // if 16 (2^4), then 4 bits needed for cache index
 
   // create cache (an array of CacheSlots)
   struct CacheSlot cache[CACHE_SIZE];
@@ -177,13 +205,12 @@ int main()
   }
 
   // display initial cache values
-  displayCache(CACHE_SIZE, cache);
+  displayCache(cache);
 
 
   /////// ******* MAIN MEMORY ******* ///////
 
   // create main memory
-  const short MEM_SIZE = 2048;
   short main_memory[MEM_SIZE] = { 0 };
 
   // give main memory initial values ([0x00] = 0, ..., [0x7FF] = 0xFF)
@@ -207,80 +234,65 @@ int main()
 
   /////// ******* OPERATIONS ******* /////// 
 
-  short address_request = 0x5;
-  read(address_request, cache, main_memory);
+  operation('R', 0x5, cache, main_memory, 0);
 
-  address_request = 0x6;
-  read(address_request, cache, main_memory);
+  operation('R', 0x6, cache, main_memory, 0);
 
-  address_request = 0x7;
-  read(address_request, cache, main_memory);
+  operation('R', 0x7, cache, main_memory, 0);
 
-  address_request = 0x14c;
-  read(address_request, cache, main_memory);
+  operation('R', 0x14c, cache, main_memory, 0);
 
-  address_request = 0x14d;
-  read(address_request, cache, main_memory);
+  operation('R', 0x14d, cache, main_memory, 0);
 
-  address_request = 0x14e;
-  read(address_request, cache, main_memory);
+  operation('R', 0x14e, cache, main_memory, 0);
 
-  address_request = 0x14f;
-  read(address_request, cache, main_memory);
+  operation('R', 0x14f, cache, main_memory, 0);
 
-  address_request = 0x150;
-  read(address_request, cache, main_memory);
+  operation('R', 0x150, cache, main_memory, 0);
 
-  address_request = 0x151;
-  read(address_request, cache, main_memory);
+  operation('R', 0x151, cache, main_memory, 0);
 
-  address_request = 0x3A6;
-  read(address_request, cache, main_memory);
+  operation('R', 0x3A6, cache, main_memory, 0);
 
-  address_request = 0x4C3;
-  read(address_request, cache, main_memory);
+  operation('R', 0x4C3, cache, main_memory, 0);
 
-  displayCache(CACHE_SIZE, cache);
 
-  address_request = 0x14C;
-  short data_to_write = 0x99;
-  read(address_request, cache, main_memory);
-  write(address_request, data_to_write, cache);
+  operation('D', 0, cache, main_memory, 0);
 
-  address_request = 0x63B;
-  data_to_write = 0x7;
-  read(address_request, cache, main_memory);
-  write(address_request, data_to_write, cache);
+  
+  operation('W', 0x14C, cache, main_memory, 0x99);
 
-  address_request = 0x582;
-  read(address_request, cache, main_memory);
+  operation('W', 0x63B, cache, main_memory, 0x7);
 
-  displayCache(CACHE_SIZE, cache);
 
-  address_request = 0x348;   
-  read(address_request, cache, main_memory);
+  operation('R', 0x582, cache, main_memory, 0);
 
-  address_request = 0x3F; 
-  read(address_request, cache, main_memory);
 
-  displayCache(CACHE_SIZE, cache);
+  operation('D', 0, cache, main_memory, 0);
 
-  address_request = 0x14B;
-  read(address_request, cache, main_memory);
 
-  address_request = 0x14C;
-  read(address_request, cache, main_memory);
+  operation('R', 0x348, cache, main_memory, 0);
 
-  address_request = 0x63F;
-  read(address_request, cache, main_memory);
+  operation('R', 0x3F, cache, main_memory, 0);
 
-  address_request = 0x83;
-  read(address_request, cache, main_memory);
 
-  displayCache(CACHE_SIZE, cache);
+  operation('D', 0, cache, main_memory, 0);
+
+
+  operation('R', 0x14B, cache, main_memory, 0);
+
+  operation('R', 0x14C, cache, main_memory, 0);
+
+  operation('R', 0x63F, cache, main_memory, 0);
+
+  operation('R', 0x83, cache, main_memory, 0);
+
+
+  operation('D', 0, cache, main_memory, 0);
+
  
   // display memory values
-  //displayMainMemory(MEM_SIZE, main_memory);
+  displayMainMemory(main_memory);
 
   printf("\n\t\t\t<<<<<<< END CACHE SIMULATION >>>>>>>\n\n");
 
