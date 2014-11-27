@@ -10,6 +10,7 @@
 /////// ******* SIMULATION OF A PIPELINED-DATAPATH ******* ///////
 
 // GLOBAL VARIABLES//
+
 const short REG_SIZE = 32;
 const short MEM_SIZE = 1024; // 1K of main memory
 
@@ -38,10 +39,9 @@ unsigned int instructs[] = { 0x00000000,
                                   0x00000000 };
 */
 
-
 // STRUCTURES
 
-// IF_ID
+// --- IF_ID --------------------
 struct IF_ID_Reg {
   int prog_counter;
   int instruct;
@@ -61,7 +61,7 @@ void destroyIF_ID_Reg(struct IF_ID_Reg *if_id_reg) {
   free(if_id_reg);
 }
 
-// ID_EX
+// --- ID_EX --------------------
 struct ID_EX_Reg {
   int prog_counter;
   int ReadReg1Value;
@@ -106,7 +106,7 @@ void destroyID_EX_Reg(struct ID_EX_Reg *id_ex_reg) {
   free(id_ex_reg);
 }
 
-// EX_MEM
+// --- EX_MEM --------------------
 struct EX_MEM_Reg {
   int SWValue;
   int WriteRegNum;
@@ -118,7 +118,7 @@ struct EX_MEM_Reg {
   short MemWrite;
   short Branch;
   short Zero;
-  short CalcBTA;
+  int CalcBTA;
 };
 struct EX_MEM_Reg *createEX_MEM_Reg() {
   struct EX_MEM_Reg *ex_mem_reg = malloc(sizeof(struct EX_MEM_Reg));
@@ -144,7 +144,7 @@ void destroyEX_MEM_Reg(struct EX_MEM_Reg *ex_mem_reg) {
   free(ex_mem_reg);
 }
 
-// MEM_WB
+// --- MEM_WB --------------------
 struct MEM_WB_Reg {
   int LWDataValue;
   int WriteRegNum;
@@ -172,31 +172,6 @@ void destroyMEM_WB_Reg(struct MEM_WB_Reg *mem_wb_reg) {
   free(mem_wb_reg);
 }
 
-// FUNCTIONS
-void displayRegs(int *Regs) {
-  printf("\nDISPLAY REGISTERS:\n");
-  for (int i = 0; i < REG_SIZE; i++) {
-    printf("| $%2d = 0x%X ", i, Regs[i]);
-    if (i % 6 == 0) {
-      printf("\n");
-    }
-  }
-  printf("\n\n");
-}
-
-void displayMainMemory(short *Main_Mem) {
-  printf("\nDISPLAY MAIN MEMORY:\n");
-  for (int i = 0; i < MEM_SIZE; i++) {
-    printf("[0x%02X] = 0x%02X | ", i, Main_Mem[i]);
-    if (Main_Mem[i] % 5 == 0) {
-      printf("\n");
-    }
-    if (Main_Mem[i] == 0xff) {
-      printf("*******<END 0x00 - 0xFF BLOCK>*******\n");
-    }
-  }
-}
-
 // STAGE FUNCTIONS
 void IF_stage(int instruct, 
               struct IF_ID_Reg *if_id_reg_write,
@@ -206,12 +181,12 @@ void IF_stage(int instruct,
         if_id_reg_write->prog_counter = start_memory_address;
       }
       else {
-        if_id_reg_write->prog_counter = (if_id_reg_write->prog_counter + 4);
+        if_id_reg_write->prog_counter = (if_id_reg_write->prog_counter + 0x4);
       }
       if_id_reg_write->instruct = 0x00000000;      
     }
     else {
-      if_id_reg_write->prog_counter = (if_id_reg_write->prog_counter + 4);
+      if_id_reg_write->prog_counter = (if_id_reg_write->prog_counter + 0x4);
 
       if_id_reg_write->instruct = instruct;        
     }
@@ -378,15 +353,11 @@ void ID_stage(int *Regs,
       id_ex_reg_write->WriteRegNum[0] = rs;
       id_ex_reg_write->WriteRegNum[1] = rt; 
     }
-
   }
-
 }
 
 void EX_stage(struct ID_EX_Reg *id_ex_reg_read, 
               struct EX_MEM_Reg *ex_mem_reg_write) {
-
-
   /****    
   PERFORM REQUESTED INSTRUCTION
   FOR EXAMPLE add:
@@ -414,7 +385,8 @@ void EX_stage(struct ID_EX_Reg *id_ex_reg_read,
     ex_mem_reg_write->WriteRegNum = id_ex_reg_read->WriteRegNum[1];
 
     // MUX: ALU  (really should make this a function)
-    if (id_ex_reg_read->ALUSrc == 0) {
+    // if R-format
+    if (id_ex_reg_read->ALUOp == 10) {
 
       // if add
       if (id_ex_reg_read->SEOffset == 0x20) {
@@ -426,8 +398,18 @@ void EX_stage(struct ID_EX_Reg *id_ex_reg_read,
       }
 
     }
-    else if (id_ex_reg_read->ALUSrc == 1) {
-      ex_mem_reg_write->ALUResult = (id_ex_reg_read->ReadReg1Value + id_ex_reg_read->SEOffset);
+    // if I-format
+    else if (id_ex_reg_read->ALUOp == 00 || id_ex_reg_read->ALUOp == 01) {
+
+      // if lw or sw
+      if (id_ex_reg_read->ALUSrc == 1) {
+        ex_mem_reg_write->ALUResult = (id_ex_reg_read->ReadReg1Value + id_ex_reg_read->SEOffset);       
+      }
+      // if beq
+      else if (id_ex_reg_read->ALUSrc == 0) {
+        ex_mem_reg_write->ALUResult = (id_ex_reg_read->ReadReg1Value - id_ex_reg_read->ReadReg2Value); 
+      }
+      
     }
 
     // control
@@ -436,8 +418,18 @@ void EX_stage(struct ID_EX_Reg *id_ex_reg_read,
     ex_mem_reg_write->MemRead = id_ex_reg_read->MemRead;
     ex_mem_reg_write->MemWrite = id_ex_reg_read->MemWrite;
     ex_mem_reg_write->Branch = id_ex_reg_read->Branch;
-    ex_mem_reg_write->Zero = 0;
-    ex_mem_reg_write->CalcBTA = 0;  
+
+    if (ex_mem_reg_write->ALUResult == 0) {
+      ex_mem_reg_write->Zero = 1;
+    }
+    else {
+      ex_mem_reg_write->Zero = 0;
+    }
+
+    // CalcBTA is based on IncrPC, 
+    // with the constant/offset shifted right by two bits,
+    // so shift left the constant/offeset to recover actual byte offset
+    ex_mem_reg_write->CalcBTA = (id_ex_reg_read->prog_counter + (id_ex_reg_read->SEOffset << 2));
   }
 }
 
@@ -474,7 +466,31 @@ void WB_stage(struct MEM_WB_Reg *mem_wb_reg_read) {
   write to registers based on inforamation read out of MEM_WB_READ
 
   */
+}
 
+// DISPLAY FUNCTIONS 
+void displayRegs(int *Regs) {
+  printf("\nDISPLAY REGISTERS:\n");
+  for (int i = 0; i < REG_SIZE; i++) {
+    printf("| $%2d = 0x%X ", i, Regs[i]);
+    if (i % 6 == 0) {
+      printf("\n");
+    }
+  }
+  printf("\n\n");
+}
+
+void displayMainMemory(short *Main_Mem) {
+  printf("\nDISPLAY MAIN MEMORY:\n");
+  for (int i = 0; i < MEM_SIZE; i++) {
+    printf("[0x%02X] = 0x%02X | ", i, Main_Mem[i]);
+    if (Main_Mem[i] % 5 == 0) {
+      printf("\n");
+    }
+    if (Main_Mem[i] == 0xff) {
+      printf("*******<END 0x00 - 0xFF BLOCK>*******\n");
+    }
+  }
 }
 
 void Print_out_everything(int *Regs, 
@@ -490,6 +506,7 @@ void Print_out_everything(int *Regs,
 
   // IF/ID
   printf("\n---<IF/ID>--------------------\n");
+  // Write
   printf("\tIF/ID Write (written to by the IF stage)\n");
   if (if_id_reg_write->instruct == 0x00000000) {
     printf("\t\tInstruction = 0x%08X\n", 
@@ -500,6 +517,7 @@ void Print_out_everything(int *Regs,
            if_id_reg_write->instruct, 
            if_id_reg_write->prog_counter);    
   }
+  // Read
   printf("\n\tIF/ID Read (read by ID the stage)\n");
   if (if_id_reg_read->instruct == 0x00000000) {
     printf("\t\tInstruction = 0x%08X\n", 
@@ -513,6 +531,7 @@ void Print_out_everything(int *Regs,
 
   // ID/EX
   printf("\n---<ID/EX>--------------------\n");
+  // Write
   printf("\tID/EX Write (written to by the ID stage)\n");
   if (id_ex_reg_write->prog_counter == 0x00000000 && id_ex_reg_write->ReadReg1Value == 0x00000000 && id_ex_reg_write->ReadReg2Value == 0x00000000 && id_ex_reg_write->SEOffset == 0x00000000 && id_ex_reg_write->WriteRegNum[0] == 0x00000000 && id_ex_reg_write->WriteRegNum[1] == 0x00000000 && id_ex_reg_write->RegDst == 0 && id_ex_reg_write->ALUSrc == 0 && id_ex_reg_write->RegWrite == 0 && id_ex_reg_write->MemToReg == 0 && id_ex_reg_write->MemRead == 0 && id_ex_reg_write->MemWrite == 0 && id_ex_reg_write->Branch == 0 && id_ex_reg_write->ALUOp == 0) {  
     printf("\t\tControl: %08d\n", 
@@ -549,7 +568,7 @@ void Print_out_everything(int *Regs,
            id_ex_reg_write->prog_counter,  
            id_ex_reg_write->ReadReg1Value,
            id_ex_reg_write->ReadReg2Value);
-    // if ALUOP is from a R-format instruction,
+    // if ALUOp is from a R-format instruction,
     // indicate that SEOffset is garbage
     if (id_ex_reg_write->ALUOp == 10) {
       printf("\t\tSEOffset = X\tWriteRegNum = %d,%d\n",        
@@ -565,7 +584,7 @@ void Print_out_everything(int *Regs,
              id_ex_reg_write->WriteRegNum[1]);
     }
   }
-
+  // Read
   printf("\n\tID/EX Read (read by the EX stage)\n");
   if (id_ex_reg_read->prog_counter == 0x00000000 && id_ex_reg_read->ReadReg1Value == 0x00000000 && id_ex_reg_read->ReadReg2Value == 0x00000000 && id_ex_reg_read->SEOffset == 0x00000000 && id_ex_reg_read->WriteRegNum[0] == 0x00000000 && id_ex_reg_read->WriteRegNum[1] == 0x00000000 && id_ex_reg_read->RegDst == 0 && id_ex_reg_read->ALUSrc == 0 && id_ex_reg_read->RegWrite == 0 && id_ex_reg_read->MemToReg == 0 && id_ex_reg_read->MemRead == 0 && id_ex_reg_read->MemWrite == 0 && id_ex_reg_read->Branch == 0 && id_ex_reg_read->ALUOp == 0) {
     printf("\t\tControl: %08d\n", 
@@ -602,7 +621,7 @@ void Print_out_everything(int *Regs,
            id_ex_reg_read->prog_counter,  
            id_ex_reg_read->ReadReg1Value,
            id_ex_reg_read->ReadReg2Value);
-    // if ALUOP is from a R-format instruction,
+    // if ALUOp is from a R-format instruction,
     // indicate that SEOffset is garbage
     if (id_ex_reg_read->ALUOp == 10) {
       printf("\t\tSEOffset = X\tWriteRegNum = %d,%d\n",        
@@ -621,6 +640,7 @@ void Print_out_everything(int *Regs,
 
   // EX/MEM
   printf("\n---<EX/MEM>--------------------\n");
+  // Write
   printf("\tEX/MEM Write (written to by the EX stage)\n");
   if (ex_mem_reg_write->MemRead == 0 && ex_mem_reg_write->MemWrite == 0 && ex_mem_reg_write->Branch == 0 && ex_mem_reg_write->MemToReg == 0 && ex_mem_reg_write->RegWrite == 0 && ex_mem_reg_write->CalcBTA == 0 && ex_mem_reg_write->Zero == 0 && ex_mem_reg_write->ALUResult == 0) {
     printf("\t\tControl: %08d\n", 0);    
@@ -647,7 +667,7 @@ void Print_out_everything(int *Regs,
     // if Branch == 0,
     // indicate that CalcBTA is garbage
     if (ex_mem_reg_write->Branch == 0) {
-      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA=X, Zero=%X\tALUResult = %X\n",        
+      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA = X, Zero = %X\tALUResult = %X\n",        
              ex_mem_reg_write->RegWrite,
              ex_mem_reg_write->Zero,
              ex_mem_reg_write->ALUResult);
@@ -655,7 +675,7 @@ void Print_out_everything(int *Regs,
     // otherwise,
     // show CalcBTA
     else {
-      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA=%X, Zero=%X\tALUResult = %X\n",        
+      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA = %X, Zero = %X\tALUResult = %X\n",        
              ex_mem_reg_write->RegWrite,
              ex_mem_reg_write->CalcBTA,
              ex_mem_reg_write->Zero,
@@ -677,6 +697,7 @@ void Print_out_everything(int *Regs,
     }
 
   }
+  // Read
   printf("\n\tEX/MEM Read (read by the MEM stage)\n");
   if (ex_mem_reg_read->MemRead == 0 && ex_mem_reg_read->MemWrite == 0 && ex_mem_reg_read->Branch == 0 && ex_mem_reg_read->MemToReg == 0 && ex_mem_reg_read->RegWrite == 0 && ex_mem_reg_read->CalcBTA == 0 && ex_mem_reg_read->Zero == 0 && ex_mem_reg_read->ALUResult == 0) {
     printf("\t\tControl: %08d\n", 0);    
@@ -703,7 +724,7 @@ void Print_out_everything(int *Regs,
     // if Branch == 0,
     // indicate that CalcBTA is garbage
     if (ex_mem_reg_read->Branch == 0) {
-      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA=X, Zero=%X\tALUResult = %X\n",        
+      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA = X, Zero = %X\tALUResult = %X\n",        
              ex_mem_reg_read->RegWrite,
              ex_mem_reg_read->Zero,
              ex_mem_reg_read->ALUResult);
@@ -711,7 +732,7 @@ void Print_out_everything(int *Regs,
     // otherwise,
     // show CalcBTA
     else {
-      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA=%X, Zero=%X\tALUResult = %X\n",        
+      printf("\t\t\t RegWrite=%X\n\t\tCalcBTA = %X, Zero = %X\tALUResult = %X\n",        
              ex_mem_reg_read->RegWrite,
              ex_mem_reg_read->CalcBTA,
              ex_mem_reg_read->Zero,
@@ -735,6 +756,7 @@ void Print_out_everything(int *Regs,
 
   // MEM/WB
   printf("\n---<MEM/WB>--------------------\n");
+  // Write
   printf("\tMEM/WB Write (written to by the MEM stage)\n");
   if (mem_wb_reg_write->MemToReg == 0 && mem_wb_reg_write->RegWrite == 0 && mem_wb_reg_write->LWDataValue == 0 && mem_wb_reg_write->WriteRegNum == 0 && mem_wb_reg_write->ALUResult == 0) {
     printf("\t\tControl: %08d\n", 0);    
@@ -781,6 +803,7 @@ void Print_out_everything(int *Regs,
     }
 
   }
+  // Read
   printf("\n\tMEM/WB Read (read by the WB stage)\n");
   if (mem_wb_reg_read->MemToReg == 0 && mem_wb_reg_read->RegWrite == 0 && mem_wb_reg_read->LWDataValue == 0 && mem_wb_reg_read->WriteRegNum == 0 && mem_wb_reg_read->ALUResult == 0) {
     printf("\t\tControl: %08d\n", 0);    
@@ -829,6 +852,7 @@ void Print_out_everything(int *Regs,
 
   printf("\n");
 }
+
 void Copy_write_to_read(struct IF_ID_Reg *if_id_reg_write,
                         struct IF_ID_Reg *if_id_reg_read, 
                         struct ID_EX_Reg *id_ex_reg_write, 
@@ -842,12 +866,12 @@ void Copy_write_to_read(struct IF_ID_Reg *if_id_reg_write,
   *id_ex_reg_read = *id_ex_reg_write;
   *ex_mem_reg_read = *ex_mem_reg_write;
   *mem_wb_reg_read = *mem_wb_reg_write;
-
 }
 
 int main()
 {
-  printf("\n\t\t\t<<<<<<< BEGIN PIPELINED-DATAPATH SIMULATION >>>>>>>\n\n");
+  printf("\n<<<<<<< BEGIN PIPELINED-DATAPATH SIMULATION >>>>>>>\n\n");
+
 
   /////// ******* REGISTERS ******* ///////
 
@@ -863,6 +887,7 @@ int main()
 
   // display initial reg values
   //displayRegs(Regs);
+
 
   /////// ******* MAIN MEMORY ******* ///////
 
@@ -887,7 +912,10 @@ int main()
   // display initial memory values
   //displayMainMemory(Main_Mem);
 
-  /////// *******  ******* ///////
+
+  /////// ******* PIPELINE REGISTERS ******* ///////
+
+  // create pipeline registers
   struct IF_ID_Reg *if_id_reg_write = createIF_ID_Reg();
   struct IF_ID_Reg *if_id_reg_read = createIF_ID_Reg();
 
@@ -900,12 +928,13 @@ int main()
   struct MEM_WB_Reg *mem_wb_reg_write = createMEM_WB_Reg();
   struct MEM_WB_Reg *mem_wb_reg_read = createMEM_WB_Reg();
 
-/////////// ************************
 
-  // loop through instructs
+  /////// ******* PRIMARY PROGRAM LOOP ******* ///////
+
+  // loop through instructions
   for (int clock_cycle = 0; clock_cycle < 8; clock_cycle++) { 
 
-      printf("[ Clock Cycle: %d ]\n", clock_cycle);
+      printf("\t\t[ Clock Cycle: %d ]\n", clock_cycle);
 
       IF_stage(instructs[clock_cycle],
                if_id_reg_write, 
@@ -955,7 +984,6 @@ int main()
       printf("******************************\n\n");
   }
 
-
-
+  printf("\n<<<<<<< END PIPELINED-DATAPATH SIMULATION >>>>>>>\n\n");
   return 0;
 }
