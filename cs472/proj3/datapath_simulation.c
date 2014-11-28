@@ -14,7 +14,7 @@
 const short REG_SIZE = 32;
 const short MEM_SIZE = 1024; // 1K of main memory
 
-unsigned int start_memory_address = 0x7A000; 
+unsigned int start_memory_address = 0x79FFC; 
 
 unsigned int instructs[] = { 0x00000000, 
                              0x00A63820, 
@@ -39,6 +39,52 @@ unsigned int instructs[] = { 0x00000000,
                                   0x00000000 };
 */
 
+// FUNCTIONAL UNIT FUNCTIONS
+int IF_PCIncrementAdder(int prog_counter) {
+  return (prog_counter + 0x4);
+}
+
+short SignExtensionUnit(short SEOffset) {
+
+    short sign_extended = 0;
+
+    // properly positioned mask for most-signifcant bit
+    // |1|000 0000 0000 0000
+    unsigned int most_signif_bit_mask = 0x8000; 
+    // proper shift amount for most-signifcant bit
+    int right_shift = 15;
+    // (logical AND) then perform bit shift to the right
+    unsigned int sign = (SEOffset & most_signif_bit_mask) 
+                           >> right_shift;
+    // if positive
+    if (sign == 0) {
+      sign_extended = 0x00000000 + SEOffset;
+    }
+    // if negative
+    else if (sign == 1) {
+      sign_extended = 0xFFFF0000 + SEOffset;
+    }
+    return sign_extended;
+}
+
+int EX_MUX_WriteReg(int RegDst, 
+                    unsigned int rt, 
+                    unsigned int rd) {
+
+  int WriteRegNum = 0x00;
+
+  // when R-format, sw, beq
+  if (RegDst == 1) {
+    WriteRegNum = rd;     
+  }
+  // when lw
+  else if (RegDst == 0) {
+    WriteRegNum = rt; 
+  }  
+
+  return WriteRegNum;
+}
+
 // STRUCTURES
 
 // --- IF_ID --------------------
@@ -50,8 +96,8 @@ struct IF_ID_Reg *createIF_ID_Reg() {
   struct IF_ID_Reg *if_id_reg = malloc(sizeof(struct IF_ID_Reg));
   assert(if_id_reg != NULL);
 
-  if_id_reg->prog_counter = 0x00000000;
-  if_id_reg->instruct = 0x00000000;
+  if_id_reg->prog_counter = 0;
+  if_id_reg->instruct = 0;
 
   return if_id_reg;
 }
@@ -82,12 +128,12 @@ struct ID_EX_Reg *createID_EX_Reg() {
   struct ID_EX_Reg *id_ex_reg = malloc(sizeof(struct ID_EX_Reg));
   assert(id_ex_reg != NULL);
 
-  id_ex_reg->prog_counter = 0x00000000;
-  id_ex_reg->ReadReg1Value = 0x00000000;
-  id_ex_reg->ReadReg2Value = 0x00000000;
-  id_ex_reg->SEOffset = 0x00000000;
-  id_ex_reg->WriteRegNum[0] = 0x00000000;
-  id_ex_reg->WriteRegNum[1] = 0x00000000;
+  id_ex_reg->prog_counter = 0;
+  id_ex_reg->ReadReg1Value = 0;
+  id_ex_reg->ReadReg2Value = 0;
+  id_ex_reg->SEOffset = 0;
+  id_ex_reg->WriteRegNum[0] = 0;
+  id_ex_reg->WriteRegNum[1] = 0;
   // control
   id_ex_reg->RegDst = 0;
   id_ex_reg->ALUSrc = 0;
@@ -124,9 +170,9 @@ struct EX_MEM_Reg *createEX_MEM_Reg() {
   struct EX_MEM_Reg *ex_mem_reg = malloc(sizeof(struct EX_MEM_Reg));
   assert(ex_mem_reg != NULL);
 
-  ex_mem_reg->SWValue = 0x00000000;
-  ex_mem_reg->WriteRegNum = 0x00000000;
-  ex_mem_reg->ALUResult = 0x00000000;
+  ex_mem_reg->SWValue = 0;
+  ex_mem_reg->WriteRegNum = 0;
+  ex_mem_reg->ALUResult = 0;
   // control
   ex_mem_reg->RegWrite = 0;
   ex_mem_reg->MemToReg = 0;
@@ -157,9 +203,9 @@ struct MEM_WB_Reg *createMEM_WB_Reg() {
   struct MEM_WB_Reg *mem_wb_reg = malloc(sizeof(struct MEM_WB_Reg));
   assert(mem_wb_reg != NULL);
 
-  mem_wb_reg->LWDataValue = 0x00000000;
-  mem_wb_reg->WriteRegNum = 0x00000000;
-  mem_wb_reg->ALUResult = 0x00000000;
+  mem_wb_reg->LWDataValue = 0;
+  mem_wb_reg->WriteRegNum = 0;
+  mem_wb_reg->ALUResult = 0;
   // control
   mem_wb_reg->RegWrite = 0;
   mem_wb_reg->MemToReg = 0;
@@ -173,36 +219,40 @@ void destroyMEM_WB_Reg(struct MEM_WB_Reg *mem_wb_reg) {
 }
 
 // STAGE FUNCTIONS
-void IF_stage(int instruct, 
+void IF_stage(int clock_cycle,
+              int instruct, 
               struct IF_ID_Reg *if_id_reg_write,
               struct IF_ID_Reg *if_id_reg_read) {
-    if (instruct == 0x00000000) {
-      if (if_id_reg_write->prog_counter == 0x00000000) {
-        if_id_reg_write->prog_counter = start_memory_address;
-      }
-      else {
-        if_id_reg_write->prog_counter = (if_id_reg_write->prog_counter + 0x4);
-      }
-      if_id_reg_write->instruct = 0x00000000;      
-    }
-    else {
-      if_id_reg_write->prog_counter = (if_id_reg_write->prog_counter + 0x4);
 
-      if_id_reg_write->instruct = instruct;        
+    //* unnecessary for this project,
+    //* but, for branches, would need to accomodate PCSrc here
+
+    // if the first clock cycle,
+    // use global starting address
+    if (clock_cycle == 0) {
+      if_id_reg_write->prog_counter = IF_PCIncrementAdder(start_memory_address);
     }
+    // otherwise, increment to next address
+    else {
+      if_id_reg_write->prog_counter = IF_PCIncrementAdder(if_id_reg_write->prog_counter);
+    }
+
+    // accept instruction
+    if_id_reg_write->instruct = instruct;        
+    
 }
 
 void ID_stage(int *Regs,
               struct IF_ID_Reg *if_id_reg_read, 
               struct ID_EX_Reg *id_ex_reg_write) {
 
+  // if nop, set everything to 0
   if (if_id_reg_read->instruct == 0x00000000) {
-    id_ex_reg_write->prog_counter = 0x00000000;
-    id_ex_reg_write->ReadReg1Value = 0x00000000;
-    id_ex_reg_write->ReadReg2Value = 0x00000000;
-    id_ex_reg_write->SEOffset = 0x00000000;
-    id_ex_reg_write->WriteRegNum[0] = 0x00000000;
-    id_ex_reg_write->WriteRegNum[1] = 0x00000000;
+    id_ex_reg_write->ReadReg1Value = 0x00;
+    id_ex_reg_write->ReadReg2Value = 0x00;
+    id_ex_reg_write->SEOffset = 0x0000;
+    id_ex_reg_write->WriteRegNum[0] = 0x00;
+    id_ex_reg_write->WriteRegNum[1] = 0x00;
     // control
     id_ex_reg_write->RegDst = 0;
     id_ex_reg_write->ALUSrc = 0;
@@ -213,7 +263,9 @@ void ID_stage(int *Regs,
     id_ex_reg_write->Branch = 0;
     id_ex_reg_write->ALUOp = 0;
   }
+  // otherwise...
   else {
+    // pass along program counter
     id_ex_reg_write->prog_counter = if_id_reg_read->prog_counter;
 
 
@@ -238,47 +290,47 @@ void ID_stage(int *Regs,
     // set control signals
     // if R-format
     if (opcode == 0x00) {
-      id_ex_reg_write->RegDst = 1; // for mux to choose rd
-      id_ex_reg_write->ALUSrc = 0;
-      id_ex_reg_write->RegWrite = 1;
-      id_ex_reg_write->MemToReg = 0;
-      id_ex_reg_write->MemRead = 0;
-      id_ex_reg_write->MemWrite = 0;
-      id_ex_reg_write->Branch = 0;
-      id_ex_reg_write->ALUOp = 10;
+      id_ex_reg_write->RegDst = 1; // choose rd for writing data
+      id_ex_reg_write->ALUSrc = 0;  // send rt into ALU
+      id_ex_reg_write->RegWrite = 1; // write data to reg
+      id_ex_reg_write->MemToReg = 0; // send ALU result to write data
+      id_ex_reg_write->MemRead = 0; // dont read from mem
+      id_ex_reg_write->MemWrite = 0; // dont write to mem
+      id_ex_reg_write->Branch = 0; // dont set branch signal
+      id_ex_reg_write->ALUOp = 10; // tell ALU Control to accept funct
     }
     // if lw
     else if (opcode == 0x23) {
-      id_ex_reg_write->RegDst = 0;
-      id_ex_reg_write->ALUSrc = 1;
-      id_ex_reg_write->RegWrite = 1;
-      id_ex_reg_write->MemToReg = 1;
-      id_ex_reg_write->MemRead = 1;
-      id_ex_reg_write->MemWrite = 0;
-      id_ex_reg_write->Branch = 0;
-      id_ex_reg_write->ALUOp = 00;
+      id_ex_reg_write->RegDst = 0; // choose rt for writing data
+      id_ex_reg_write->ALUSrc = 1; // send sign extend offset into ALU
+      id_ex_reg_write->RegWrite = 1; // write data to reg
+      id_ex_reg_write->MemToReg = 1; // send mem to reg
+      id_ex_reg_write->MemRead = 1; // read from mem
+      id_ex_reg_write->MemWrite = 0; // dont write to mem
+      id_ex_reg_write->Branch = 0; // dont set branch signal
+      id_ex_reg_write->ALUOp = 00; // set ALU to add (& ignore funct)
     }
     // if sw
     else if (opcode == 0x2B) {
-      id_ex_reg_write->RegDst = 1; // mux choose rd (like example)
-      id_ex_reg_write->ALUSrc = 1;
-      id_ex_reg_write->RegWrite = 0;
-      id_ex_reg_write->MemToReg = 1; // copy RegDst (both are 'X')
-      id_ex_reg_write->MemRead = 0;
-      id_ex_reg_write->MemWrite = 1;
-      id_ex_reg_write->Branch = 0;
-      id_ex_reg_write->ALUOp = 00;
+      id_ex_reg_write->RegDst = 1; // choose rd even though garbage
+      id_ex_reg_write->ALUSrc = 1; // send sign extend offset into ALU
+      id_ex_reg_write->RegWrite = 0; // dont write data to reg
+      id_ex_reg_write->MemToReg = 0; // (garbage, so just ALU result)
+      id_ex_reg_write->MemRead = 0; // dont read from mem
+      id_ex_reg_write->MemWrite = 1; // write reg data to mem
+      id_ex_reg_write->Branch = 0; // dont set branch signal
+      id_ex_reg_write->ALUOp = 00; // set ALU to add (& ignore funct)
     }
     // if beq
     else if (opcode == 0x04) {
-      id_ex_reg_write->RegDst = 1; // mux choose rd (like example)
-      id_ex_reg_write->ALUSrc = 0;
-      id_ex_reg_write->RegWrite = 0;
-      id_ex_reg_write->MemToReg = 1; // copy RegDst (both are 'X')
-      id_ex_reg_write->MemRead = 0;
-      id_ex_reg_write->MemWrite = 0;
-      id_ex_reg_write->Branch = 1;
-      id_ex_reg_write->ALUOp = 01;
+      id_ex_reg_write->RegDst = 1; // choose rd even though garbage
+      id_ex_reg_write->ALUSrc = 0; // send rt into ALU
+      id_ex_reg_write->RegWrite = 0; // dont write data to reg
+      id_ex_reg_write->MemToReg = 1; // (garbage, so just ALU result)
+      id_ex_reg_write->MemRead = 0; // dont read from mem 
+      id_ex_reg_write->MemWrite = 0; // dont write to mem
+      id_ex_reg_write->Branch = 1; // set branch signal
+      id_ex_reg_write->ALUOp = 01; // set ALU to sub (& ignore funct)
     }
 
     /******* FIRST REGISTER (source) [5 bits] *******/
@@ -291,7 +343,7 @@ void ID_stage(int *Regs,
     unsigned int rs = (if_id_reg_read->instruct & rs_mask) 
                        >> rs_right_shift;
 
-    /****** SECOND REGISTER (R: source | I: source/dest) [5 bits] ******/
+    /*** SECOND REGISTER (R: source | I: source/dest) [5 bits] ***/
     // properly positioned mask for second register
     // 0000 0000 000|1 1111| 0000 0000 0000 0000
     unsigned int rt_mask = 0x001F0000; 
@@ -315,6 +367,7 @@ void ID_stage(int *Regs,
     unsigned int rd = (if_id_reg_read->instruct & rd_mask) 
                        >> rd_right_shift;
 
+    // if R-format
     if (opcode == 0x00) {
       // ignore shamt
 
@@ -324,11 +377,12 @@ void ID_stage(int *Regs,
       // 0000 0000 0000 0000 0000 0000 00|11 1111|
       unsigned int funct_mask = 0x0000003F; 
       // logical AND (no need to shift)
-      unsigned int funct = (if_id_reg_read->instruct & funct_mask);
+      int funct = (if_id_reg_read->instruct & funct_mask);
 
       id_ex_reg_write->SEOffset = funct;
 
     }
+    // if I-format
     else {
       /******* I: CONSTANT/OFFSET [16 bits] *******/
 
@@ -343,16 +397,11 @@ void ID_stage(int *Regs,
       id_ex_reg_write->SEOffset = constant_offset;  
     }
 
-    // when R-format, sw
-    if (id_ex_reg_write->RegDst == 1) {
-      id_ex_reg_write->WriteRegNum[0] = rt;
-      id_ex_reg_write->WriteRegNum[1] = rd;     
-    }
-    // when lw
-    else if (id_ex_reg_write->RegDst == 0) {
-      id_ex_reg_write->WriteRegNum[0] = rs;
-      id_ex_reg_write->WriteRegNum[1] = rt; 
-    }
+    id_ex_reg_write->SEOffset = SignExtensionUnit(id_ex_reg_write->SEOffset);
+
+    // only rt and rd are ever reg destination options
+    id_ex_reg_write->WriteRegNum[0] = rt;
+    id_ex_reg_write->WriteRegNum[1] = rd;     
   }
 }
 
@@ -365,6 +414,7 @@ void EX_stage(struct ID_EX_Reg *id_ex_reg_read,
 
   */
 
+  // if nop, set everything to 0
   if (id_ex_reg_read->RegDst == 0 && id_ex_reg_read->ALUSrc == 0 && id_ex_reg_read->RegWrite == 0 && id_ex_reg_read->MemToReg == 0 && id_ex_reg_read->MemRead == 0 && id_ex_reg_read->MemWrite == 0 && id_ex_reg_read->Branch == 0 && id_ex_reg_read->ALUOp == 0) {
 
     ex_mem_reg_write->SWValue = 0;
@@ -376,13 +426,20 @@ void EX_stage(struct ID_EX_Reg *id_ex_reg_read,
     ex_mem_reg_write->MemRead = 0;
     ex_mem_reg_write->MemWrite = 0;
     ex_mem_reg_write->Branch = 0;
-
     ex_mem_reg_write->Zero = 0;
     ex_mem_reg_write->CalcBTA = 0;  
   }
+  // otherwise...
   else {
+    // set sw value to rt data (even if garbage)
     ex_mem_reg_write->SWValue = id_ex_reg_read->ReadReg2Value;
-    ex_mem_reg_write->WriteRegNum = id_ex_reg_read->WriteRegNum[1];
+
+    // use EX MUX to select appropriate reg to write data
+    ex_mem_reg_write->WriteRegNum = EX_MUX_WriteReg(id_ex_reg_read->RegDst, id_ex_reg_read->WriteRegNum[0], id_ex_reg_read->WriteRegNum[1]);
+
+    //  
+
+
 
     // MUX: ALU  (really should make this a function)
     // if R-format
@@ -936,7 +993,8 @@ int main()
 
       printf("\t\t[ Clock Cycle: %d ]\n", clock_cycle);
 
-      IF_stage(instructs[clock_cycle],
+      IF_stage(clock_cycle,
+               instructs[clock_cycle],
                if_id_reg_write, 
                if_id_reg_read);
 
