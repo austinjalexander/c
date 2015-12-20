@@ -167,7 +167,7 @@ int EX_BranchAddressAdder(int prog_counter,
   return (prog_counter + ShiftedLeftTwoSEoffset);
 }
 
-// STRUCTURES
+// DATA STRUCTURES (PIPELINE REGISTERS)
 
 // --- IF_ID --------------------
 struct IF_ID_Reg {
@@ -350,12 +350,6 @@ void ID_stage(int *Regs,
     // pass along program counter
     id_ex_reg_write->prog_counter = if_id_reg_read->prog_counter;
 
-    /*****   
-
-    AFTER DECODE, DO ACTUAL REGISTER FETCH
-
-    */
-
     // >>>>>>>>>>>>>>>>>>>> DECODE <<<<<<<<<<<<<<<<<<<< //
 
     /******* OPCODE [6 bits] *******/
@@ -489,12 +483,6 @@ void ID_stage(int *Regs,
 
 void EX_stage(struct ID_EX_Reg *id_ex_reg_read, 
               struct EX_MEM_Reg *ex_mem_reg_write) {
-  /****    
-  PERFORM REQUESTED INSTRUCTION
-  FOR EXAMPLE add:
-  EX_MEM_WRITE.ALU_Result = ID_EX_READ.Reag_Val1 + ID_EX_READ.Reg_Val2;
-
-  */
 
   // if nop, set everything to 0
   if (id_ex_reg_read->RegDst == 0 && id_ex_reg_read->ALUSrc == 0 && id_ex_reg_read->RegWrite == 0 && id_ex_reg_read->MemToReg == 0 && id_ex_reg_read->MemRead == 0 && id_ex_reg_read->MemWrite == 0 && id_ex_reg_read->Branch == 0 && id_ex_reg_read->ALUOp == 0) {
@@ -563,13 +551,6 @@ void MEM_stage(int *Regs,
                struct EX_MEM_Reg *ex_mem_reg_read, 
                struct MEM_WB_Reg *mem_wb_reg_write) {
 
-  /****    
-  if insturctin is lb, use address calculated in EX stage as an index 
-  into main memory array and get value there
-  otherwise, pass info from read version of EX_MEM pipeline reg to the write version of MEM_WB
-
-  */
-
   // if nop, set everything to 0
   if (ex_mem_reg_read->RegWrite == 0 && ex_mem_reg_read->MemToReg == 0 && ex_mem_reg_read->MemRead == 0 && ex_mem_reg_read->MemWrite == 0 && ex_mem_reg_read->Branch == 0) {
 
@@ -607,8 +588,10 @@ void MEM_stage(int *Regs,
       // if sw, sb
       else if (ex_mem_reg_read->RegWrite == 0 && ex_mem_reg_read->MemToReg == 0 && ex_mem_reg_read->MemRead == 0 && ex_mem_reg_read->MemWrite == 1 && ex_mem_reg_read->Branch == 0) {
 
-        // send rt value to main memory
-        Main_Mem[(mem_wb_reg_write->ALUResult)] = ex_mem_reg_read->SW_SB_Value;
+        // send rt value to main memory;
+        // for this project, only sb, so shorten to byte length
+        char sb_byte = ex_mem_reg_read->SW_SB_Value;
+        Main_Mem[(mem_wb_reg_write->ALUResult)] = sb_byte;
       }
     }
   }
@@ -627,10 +610,11 @@ void WB_stage(int *Regs,
   // if lw, lb
   else if (mem_wb_reg_read->RegWrite == 1 && mem_wb_reg_read->MemToReg == 1) {
 
-    // put value from main memory in rt
+    // put value from main memory in rt;
+    // for this assignment, mem is only byte values,
+    // so no need to shorten
     Regs[mem_wb_reg_read->WriteRegNum] = mem_wb_reg_read->LW_LB_DataValue;
   }
-
 }
 
 // DISPLAY FUNCTIONS 
@@ -873,14 +857,16 @@ void Print_out_everything(int *Regs,
     // if RegWrite == 0,
     // indicate that WriteRegNum is garbage
     if (ex_mem_reg_write->RegWrite == 0) {
-      printf("\t\tSW_SB_Value = 0x%X, WriteRegNum = X\n",        
-             ex_mem_reg_write->SW_SB_Value);
+      char sb_byte = ex_mem_reg_write->SW_SB_Value;
+      printf("\t\tSW_SB_Value = 0x%X or 0x%X, WriteRegNum = X\n",        
+             ex_mem_reg_write->SW_SB_Value, sb_byte);
     }
     // otherwise,
     // show WriteRegNum
     else {
-      printf("\t\tSW_SB_Value = 0x%X, WriteRegNum = $%d\n",        
-             ex_mem_reg_write->SW_SB_Value,
+      char sb_byte = ex_mem_reg_write->SW_SB_Value;
+      printf("\t\tSW_SB_Value = 0x%X or 0x%X, WriteRegNum = $%d\n",        
+             ex_mem_reg_write->SW_SB_Value, sb_byte,
              ex_mem_reg_write->WriteRegNum);
     }
 
@@ -930,14 +916,16 @@ void Print_out_everything(int *Regs,
     // if RegWrite == 0,
     // indicate that WriteRegNum is garbage
     if (ex_mem_reg_read->RegWrite == 0) {
-      printf("\t\tSW_SB_Value = 0x%X, WriteRegNum = X\n",        
-             ex_mem_reg_read->SW_SB_Value);
+      char sb_byte = ex_mem_reg_read->SW_SB_Value;
+      printf("\t\tSW_SB_Value = 0x%X or 0x%X, WriteRegNum = X\n",        
+             ex_mem_reg_read->SW_SB_Value, sb_byte);
     }
     // otherwise,
     // show WriteRegNum
     else {
-      printf("\t\tSW_SB_Value = 0x%X, WriteRegNum = $%d\n",        
-             ex_mem_reg_read->SW_SB_Value,
+      char sb_byte = ex_mem_reg_read->SW_SB_Value;
+      printf("\t\tSW_SB_Value = 0x%X or 0x%X, WriteRegNum = $%d\n",        
+             ex_mem_reg_read->SW_SB_Value, sb_byte,
              ex_mem_reg_read->WriteRegNum);
     }
   }
@@ -990,6 +978,14 @@ void Print_out_everything(int *Regs,
            mem_wb_reg_write->WriteRegNum);
     }
 
+    // display the action
+    // if sw, sb
+    if (ex_mem_reg_read->RegWrite == 0 && ex_mem_reg_read->MemToReg == 0 && ex_mem_reg_read->MemRead == 0 && ex_mem_reg_read->MemWrite == 1 && ex_mem_reg_read->Branch == 0) {
+      // sb length for this project
+      char sb_byte = ex_mem_reg_read->SW_SB_Value;
+      printf("\t\t[*** rt byte value (0x%X) sent to main memory @ address 0x%X ***]\n", sb_byte, mem_wb_reg_write->ALUResult);
+    }
+
   }
   // Read
   printf("\n\tMEM/WB Read (read by the WB stage)\n");
@@ -1036,10 +1032,26 @@ void Print_out_everything(int *Regs,
     printf("WriteRegNum = $%d\n",        
            mem_wb_reg_read->WriteRegNum);
     }
+
+    // display the action
+    // if R-format
+    if (mem_wb_reg_read->RegWrite == 1 && mem_wb_reg_read->MemToReg == 0) {
+      printf("\t\t[*** put ALU result (0x%X) into rd ($%d) ***]\n", 
+                     mem_wb_reg_read->ALUResult, 
+                     mem_wb_reg_read->WriteRegNum);
+    }
+    // if lw, lb
+    else if (mem_wb_reg_read->RegWrite == 1 && mem_wb_reg_read->MemToReg == 1) {
+      printf("\t\t[*** put value (0x%X) from main memory @ 0x%X into rt ($%d) ***]\n", 
+                     mem_wb_reg_read->LW_LB_DataValue, 
+                     mem_wb_reg_read->ALUResult, 
+                     mem_wb_reg_read->WriteRegNum);
+    }
   }
 
   printf("\n");
 }
+
 
 void Copy_write_to_read(struct IF_ID_Reg *if_id_reg_write,
                         struct IF_ID_Reg *if_id_reg_read, 
@@ -1098,7 +1110,7 @@ int main()
   }
 
   // display initial memory values
-  displayMainMemory(Main_Mem);
+  //displayMainMemory(Main_Mem);
 
 
   /////// ******* PIPELINE REGISTERS ******* ///////
@@ -1119,10 +1131,11 @@ int main()
 
   /////// ******* PRIMARY PROGRAM LOOP ******* ///////
 
+  //printf("\n");
   // loop through instructions
-  for (int clock_cycle = 0; clock_cycle < 13; clock_cycle++) { 
+  for (int clock_cycle = 0; clock_cycle < 12; clock_cycle++) { 
 
-      printf("\t\t[ Clock Cycle: %d ]\n", clock_cycle);
+      printf("\t\t[ Clock Cycle: %d ]\n", (clock_cycle + 1));
 
       IF_stage(clock_cycle,
                instructs[clock_cycle],
@@ -1163,7 +1176,7 @@ int main()
                          mem_wb_reg_write,
                          mem_wb_reg_read);
 
-      /* TO SEE SECOND HALF OF CLOCK CYCLE
+      /* TO SEE "SECOND HALF" OF CLOCK CYCLE
       Print_out_everything(Regs, 
                            if_id_reg_write, 
                            if_id_reg_read,
@@ -1179,8 +1192,23 @@ int main()
       printf("******************************\n\n");
   }
 
+  // display final version of memory
   displayMainMemory(Main_Mem);
 
   printf("\n<<<<<<< END PIPELINED-DATAPATH SIMULATION >>>>>>>\n\n");
+
+  // destroy pipeline registers
+  destroyIF_ID_Reg(if_id_reg_write);
+  destroyIF_ID_Reg(if_id_reg_read);
+
+  destroyID_EX_Reg(id_ex_reg_write);
+  destroyID_EX_Reg(id_ex_reg_read);
+
+  destroyEX_MEM_Reg(ex_mem_reg_write);
+  destroyEX_MEM_Reg(ex_mem_reg_read);
+
+  destroyMEM_WB_Reg(mem_wb_reg_write);
+  destroyMEM_WB_Reg(mem_wb_reg_read);
+
   return 0;
 }
